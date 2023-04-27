@@ -4,11 +4,23 @@ import {
   Box,
   Button,
   CircularProgress,
-  Container, Dialog,
+  Container,
+  Dialog,
   DialogContent,
   DialogTitle,
   Grid,
-  IconButton, Menu, MenuItem, Paper, Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
+  IconButton,
+  Menu,
+  MenuItem,
+  Paper,
+  Select, SelectChangeEvent,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer, TableFooter,
+  TableHead,
+  TablePagination,
+  TableRow,
   Typography
 } from "@mui/material";
 import EditDonorForm from "../../components/forms/EditDonorForm";
@@ -27,38 +39,85 @@ import dayjs from "dayjs";
 
 const DonorDashboard = () => {
   const [appointments, setAppointments] = useState<any>([]);
+  const [paginatedAppointments, setPaginatedAppointments] = useState<any[]>([]);
+  const [selectedFilter, setSelectedFilter] = useState<"all" | "today">("today");
   const [loading, setLoading] = useState(true);
+
+  const [page, setPage] = useState(0);
+  const [rowsPerPage, setRowsPerPage] = useState(5);
+  const [pageCount, setPageCount] = useState(0);
 
   const userInfo = useAuth();
 
   useEffect(() => {
-    api.get(`/appointment/doctor/${userInfo?.id}`)
+    if(selectedFilter === "today") {
+      api.get(`/appointment/doctor/${userInfo?.id}`)
+        .then(res => {
+          setAppointments(res);
+        })
+        .catch(err => {
+          console.error(err.message);
+        }).finally(() => {
+          setLoading(false);
+        });
+    } else if(selectedFilter === "all")
+    {
+      api.get(`/appointment/doctor/${page}/${rowsPerPage}/${userInfo?.id}`)
+        .then(res => {
+          setAppointments(res);
+        })
+        .catch(err => {
+          console.error(err.message);
+        });
+    }
+
+    api.get(`/appointment/doctor/count/${userInfo?.id}`)
       .then(res => {
-        setAppointments(res);
+        setPageCount(res);
       })
       .catch(err => {
-        console.error(err.message);
-      }).finally(() => {
-        setLoading(false);
+        console.log(err.message);
       });
-  }, []);
+  }, [selectedFilter, page, rowsPerPage]);
 
   const handleAppointmentStatus = (id: string, status: number) => () => {
     api.put(`/appointment/${id}/${status}`)
       .then(res => {
         toast.success("Appointment updated successfully.");
 
-        api.get(`/appointment/doctor/${userInfo?.id}`)
-          .then(res => {
-            setAppointments(res);
-          })
-          .catch(err => {
-            console.error(err.message);
-          });
+        if(selectedFilter === "today") {
+          api.get(`/appointment/doctor/${userInfo?.id}`)
+            .then(res => {
+              setAppointments(res);
+            })
+            .catch(err => {
+              console.error(err.message);
+            })
+            .finally(() => {
+              setLoading(false);
+            });
+        } else if(selectedFilter === "all")
+        {
+          api.get(`/appointment/doctor/${page}/${rowsPerPage}/${userInfo?.id}`)
+            .then(res => {
+              setAppointments(res);
+            })
+            .catch(err => {
+              console.error(err.message);
+            });
+        }
       })
       .catch(err => {
         toast.error("Something went wrong.");
       });
+  };
+
+  const handleChangePage = (event: React.MouseEvent<HTMLButtonElement, MouseEvent> | null, newPage: number) => {
+    setPage(newPage);
+  };
+
+  const handleFilterChange = (event: SelectChangeEvent) => {
+    setSelectedFilter(event.target.value as "all" | "today");
   };
 
   const renderAppointmentStatus = (appointmentStatus: number) => {
@@ -74,43 +133,64 @@ const DonorDashboard = () => {
   return <Container maxWidth="lg" sx={{marginTop: "10rem"}}>
     {loading ? <CircularProgress sx={{margin: "10rem auto"}}/>
       :
-      <TableContainer component={Paper}>
-        <Table sx={{ minWidth: 650, maxHeight: 500 }} size="small" aria-label="a dense table">
-          <TableHead>
-            <TableRow>
-              <TableCell align="left">Transfusion center</TableCell>
-              <TableCell align="left">Date</TableCell>
-              <TableCell align="left">Doctor</TableCell>
-              <TableCell align="left">Status</TableCell>
-              <TableCell />
-              <TableCell />
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {appointments.map((row: Appointment) => (
-              <TableRow key={row.id}>
-                <TableCell align="left">{row.transfusionCenter}</TableCell>
-                <TableCell align="left">{new Date(row.date).toDateString()}</TableCell>
-                <TableCell align="left">{row.donor}</TableCell>
-                <TableCell align="left">{renderAppointmentStatus(row.status)}</TableCell>
-                <TableCell>
-                  <Button
-                    variant="text"
-                    onClick={handleAppointmentStatus(row.id, AppointmentStatus.Done)}
-                    disabled={row.status !== AppointmentStatus.Pending}>Mark as done</Button>
-                </TableCell>
-                <TableCell>
-                  <Button
-                    variant="text"
-                    onClick={handleAppointmentStatus(row.id, AppointmentStatus.Missed)}
-                    disabled={row.status !== AppointmentStatus.Pending}>Mark as missed</Button>
+      <>
+        <TableContainer component={Paper}>
+          <Table sx={{ minWidth: 650, maxHeight: 500 }} size="small" aria-label="a dense table">
+            <TableHead>
+              <TableRow>
+                <TableCell align="left">Transfusion center</TableCell>
+                <TableCell align="left">Date</TableCell>
+                <TableCell align="left">Donor</TableCell>
+                <TableCell align="left">Status</TableCell>
+                <TableCell colSpan={2}>
+                  <Select
+                    label="Filter"
+                    value={selectedFilter}
+                    onChange={handleFilterChange}
+                  >
+                    <MenuItem value={"all"} >All</MenuItem>
+                    <MenuItem value={"today"} >Today</MenuItem>
+                  </Select>
                 </TableCell>
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </TableContainer>
+            </TableHead>
+            <TableBody>
+              {appointments.map((row: Appointment) => (
+                <TableRow key={row.id}>
+                  <TableCell align="left">{row.transfusionCenter}</TableCell>
+                  <TableCell align="left">{new Date(row.date).toDateString()}</TableCell>
+                  <TableCell align="left">{row.donor}</TableCell>
+                  <TableCell align="left">{renderAppointmentStatus(row.status)}</TableCell>
+                  <TableCell>
+                    <Button
+                      variant="text"
+                      onClick={handleAppointmentStatus(row.id, AppointmentStatus.Done)}
+                      disabled={row.status !== AppointmentStatus.Pending}>Mark as done</Button>
+                  </TableCell>
+                  <TableCell>
+                    <Button
+                      variant="text"
+                      onClick={handleAppointmentStatus(row.id, AppointmentStatus.Missed)}
+                      disabled={row.status !== AppointmentStatus.Pending}>Mark as missed</Button>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+            <TableFooter>
+              {selectedFilter === "all" && <TablePagination
+                component="div"
+                count={pageCount}
+                page={page}
+                onPageChange={handleChangePage}
+                rowsPerPage={rowsPerPage}
+              />}
+            </TableFooter>
+          </Table>
+        </TableContainer>
+
+      </>
     }
+
   </Container>;
 };
 
